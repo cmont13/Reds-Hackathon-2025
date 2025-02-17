@@ -317,4 +317,79 @@ feature_importance = feature_importance.sort_values(by="Coefficient", ascending=
 
 # Show feature importance
 print("\nSelected Features and Coefficients:")
+
+### Logistic Regression
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix, classification_report, roc_curve, auc
+
+# Load data
+savantdata = pd.read_csv("C:/Users/Nicol/OneDrive/Desktop/Reds Hackathon/savant_data_2021_2023.csv")
+lahman_people = pd.read_csv("C:/Users/Nicol/OneDrive/Desktop/Reds Hackathon/lahman_people.csv")
+
+# Select relevant columns and filter data
+logistic_data = savantdata[['pitcher', 'batter', 'release_speed', 'release_pos_x', 'release_pos_z', 
+                             'balls', 'strikes', 'p_throws', 'description']]
+
+logistic_data = logistic_data[logistic_data['description'].isin(["called_strike", "ball"])]
+logistic_data['strike_result'] = (logistic_data['description'] == "called_strike").astype(int)
+
+# Remove missing values
+logistic_data_clean = logistic_data.dropna(subset=['release_speed', 'release_pos_x', 'release_pos_z', 
+                                                   'balls', 'strikes', 'p_throws'])
+
+# Convert categorical variable 'p_throws' using one-hot encoding
+logistic_data_clean = pd.get_dummies(logistic_data_clean, columns=['p_throws'], drop_first=True)
+
+# Define features and target variable
+X = logistic_data_clean[['release_speed', 'release_pos_x', 'release_pos_z', 'balls', 'strikes', 'p_throws_R']]
+y = logistic_data_clean['strike_result']
+
+# Train logistic regression model
+model = LogisticRegression(solver='liblinear')
+model.fit(X, y)
+
+# Model summary
+print("Intercept:", model.intercept_)
+print("Coefficients:", model.coef_)
+
+# Predict probabilities and classifications
+logistic_data_clean['predicted_prob'] = model.predict_proba(X)[:, 1]
+logistic_data_clean['predicted_class'] = (logistic_data_clean['predicted_prob'] > 0.5).astype(int)
+
+# Confusion matrix
+conf_matrix = confusion_matrix(y, logistic_data_clean['predicted_class'])
+print("Confusion Matrix:\n", conf_matrix)
+
+# Classification report
+report = classification_report(y, logistic_data_clean['predicted_class'])
+print("Classification Report:\n", report)
+
+# ROC Curve
+fpr, tpr, _ = roc_curve(y, logistic_data_clean['predicted_prob'])
+roc_auc = auc(fpr, tpr)
+
+plt.figure(figsize=(8, 6))
+plt.plot(fpr, tpr, color='blue', label=f'ROC Curve (AUC = {roc_auc:.2f})')
+plt.plot([0, 1], [0, 1], color='gray', linestyle='--')
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.title("ROC Curve")
+plt.legend()
+plt.show()
+
+# Calculate accuracy, precision, recall, and F1-score
+accuracy = (logistic_data_clean['predicted_class'] == y).mean()
+precision = conf_matrix[1, 1] / (conf_matrix[1, 1] + conf_matrix[0, 1]) if (conf_matrix[1, 1] + conf_matrix[0, 1]) > 0 else 0
+recall = conf_matrix[1, 1] / (conf_matrix[1, 1] + conf_matrix[1, 0]) if (conf_matrix[1, 1] + conf_matrix[1, 0]) > 0 else 0
+f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+
+print(f"Accuracy: {accuracy:.4f}")
+print(f"Precision: {precision:.4f}")
+print(f"Recall: {recall:.4f}")
+print(f"F1 Score: {f1_score:.4f}")
 print(feature_importance)
