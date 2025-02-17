@@ -393,3 +393,161 @@ print(f"Precision: {precision:.4f}")
 print(f"Recall: {recall:.4f}")
 print(f"F1 Score: {f1_score:.4f}")
 print(feature_importance)
+
+#Testing Various Models
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split, cross_validate, KFold
+from sklearn import preprocessing
+from sklearn.feature_selection import RFECV, r_regression
+from sklearn.ensemble import RandomForestRegressor, AdaBoostRegressor, GradientBoostingRegressor, BaggingRegressor, HistGradientBoostingRegressor, StackingRegressor
+from sklearn.metrics import root_mean_squared_error
+from sklearn.linear_model import Lasso, LinearRegression
+import xgboost as xgb
+import tensorflow as tf
+import tensorflow_decision_forests as tfdf
+import keras
+
+data = pd.read_csv('totalsDF.csv')
+sample = pd.read_csv('sample_submission.csv')
+sample_players = sample['PLAYER_ID']
+
+sum_stats = data.groupby('player')[
+    [  'appearances_2021', 'appearances_2022',
+       'appearances_2023', 'avg_appearances_2021_2022',
+       'avg_appearances_2022_2023', 'trend_appearances_2021_2022',
+       'trend_appearances_2022_2023',
+       'Avg Pitch Speed', 'Max Pitch Speed', 'Avg Effective Speed',
+       'Max Effective Speed', 'Avg Spin Rate', 'Max Spin Rate',
+       'Mean Exit Velocity', 'Max Exit Velocity', 'w_avg_lnch_spd_wo_risp',
+       'w_avg_lnch_spd_w_risp', 'w_avg_lnch_ang_wo_risp',
+       'w_avg_lnch_ang_w_risp', 'w_avg_est_ba_wo_risp', 'w_avg_est_ba_w_risp',
+       'w_avg_est_woba_wo_risp', 'w_avg_est_woba_w_risp',
+       'w_avg_iso_value_wo_risp', 'w_avg_iso_value_w_risp',
+       'w_avg_hit_distance_wo_risp', 'w_avg_hit_distance_w_risp',
+       'w_avg_lnch_spd_wo_risp_pctl', 'w_avg_lnch_spd_w_risp_pctl',
+       'w_avg_lnch_ang_wo_risp_pctl', 'w_avg_lnch_ang_w_risp_pctl',
+       'w_avg_est_ba_wo_risp_pctl', 'w_avg_est_ba_w_risp_pctl',
+       'w_avg_est_woba_wo_risp_pctl', 'w_avg_est_woba_w_risp_pctl',
+       'w_avg_iso_value_wo_risp_pctl', 'w_avg_iso_value_w_risp_pctl',
+       'w_avg_hit_distance_wo_risp_pctl', 'w_avg_hit_distance_w_risp_pctl',
+       'avg_ff_velo', 'sp_indicator', '2021', '2022', '2023', 'change_2022',
+       'change_2023']
+].sum().reset_index()
+
+single_stats = data.groupby('player')[
+    [  'height', 'weight',
+       'age_at_start_of_2023', 'age_at_start_of_2024', 'years_in_mlb_by_2023',
+       'years_in_mlb_by_2024','ten_days_off_2021_2022',
+       'ten_days_off_2022_2023', 'games_played_2021_2022',
+       'games_played_2022_2023']
+].max().reset_index()
+
+stats = ['obp_2021', 'obp_2022', 'obp_2023',
+     'slg_2021', 'slg_2022', 'slg_2023',
+     'ops_2021', 'ops_2022', 'ops_2023']
+season_stats = data.pivot(index='player', columns='role', values=stats).reset_index()
+season_stats.columns = ['player', 'obp_2021_p', 'obp_2021_b', 'obp_2022_p', 'obp_2022_b', 'obp_2023_p', 'obp_2023_b',
+                        'slg_2021_p', 'slg_2021_b', 'slg_2022_p', 'slg_2022_b', 'slg_2023_p', 'slg_2023_b',
+                        'ops_2021_p', 'ops_2021_b', 'ops_2022_p', 'ops_2022_b', 'ops_2023_p', 'ops_2023_b']
+
+new_data = sum_stats.merge(single_stats, on='player')
+new_data = new_data.merge(season_stats, on='player')
+
+new_data['pitcher'] = ((new_data['ops_2021_p'] > 0) | (new_data['ops_2022_p'] > 0) | (new_data['ops_2023_p'] > 0)).astype(int)
+new_data['batter'] = ((new_data['ops_2021_b'] > 0) | (new_data['ops_2022_b'] > 0) | (new_data['ops_2023_b'] > 0)).astype(int)
+
+X = np.array(new_data[['w_avg_lnch_spd_wo_risp_pctl',
+       'w_avg_lnch_spd_w_risp_pctl', 'w_avg_lnch_ang_wo_risp_pctl',
+       'w_avg_lnch_ang_w_risp_pctl', 'w_avg_est_ba_wo_risp_pctl',
+       'w_avg_est_ba_w_risp_pctl', 'w_avg_est_woba_wo_risp_pctl',
+       'w_avg_est_woba_w_risp_pctl', 'w_avg_iso_value_wo_risp_pctl',
+       'w_avg_iso_value_w_risp_pctl', 'w_avg_hit_distance_wo_risp_pctl',
+       'w_avg_hit_distance_w_risp_pctl',
+       'ten_days_off_2021_2022', 'games_played_2021_2022',
+       'appearances_2021', 'appearances_2022',
+       'avg_appearances_2021_2022', 'trend_appearances_2021_2022',
+       'height', 'weight', 'age_at_start_of_2023', 'years_in_mlb_by_2023',
+       'obp_2021_p', 'obp_2022_p', 'slg_2021_p', 'slg_2022_p',
+       'ops_2021_p', 'ops_2022_p',
+       'obp_2021_b', 'obp_2022_b', 'slg_2021_b', 'slg_2022_b',
+       'ops_2021_b', 'ops_2022_b',
+       'Avg Pitch Speed', 'Max Pitch Speed', 'Avg Effective Speed',
+       'Max Effective Speed', 'Avg Spin Rate', 'Max Spin Rate',
+       '2021', '2022', 'change_2022', 'pitcher', 'batter'
+       ]])
+
+y = np.array(new_data['appearances_2023'])
+
+#selector = RFECV(GradientBoostingRegressor(), cv=5)
+#selector = selector.fit(X, y)
+
+X = selector.transform(X)
+
+models = (
+    LinearRegression(),
+    Lasso(),
+    RandomForestRegressor(),
+    tfdf.keras.RandomForestModel(
+      task=tfdf.keras.Task.REGRESSION),
+    GradientBoostingRegressor(),
+    HistGradientBoostingRegressor(),
+    xgb.XGBRegressor(objective="reg:squarederror", random_state=42),
+    AdaBoostRegressor()
+
+)
+
+for m in models:
+  rmse = []
+
+  for train, test in KFold(n_splits=5).split(X):
+    X_train = X[train]
+    y_train = y[train]
+    X_test = X[test]
+    y_test = y[test]
+
+    model = m
+
+    model.fit(X_train, y_train)
+
+    y_pred = model.predict(X_test)
+    rmse.append(root_mean_squared_error(y_test, y_pred))
+
+  print('AVERAGE RMSE:', np.array(rmse).mean())
+
+#Final Model
+model = tfdf.keras.RandomForestModel(
+      task=tfdf.keras.Task.REGRESSION)
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
+
+model.fit(X_train, y_train)
+
+X_2024 = np.array(new_data[['w_avg_lnch_spd_wo_risp_pctl',
+       'w_avg_lnch_spd_w_risp_pctl', 'w_avg_lnch_ang_wo_risp_pctl',
+       'w_avg_lnch_ang_w_risp_pctl', 'w_avg_est_ba_wo_risp_pctl',
+       'w_avg_est_ba_w_risp_pctl', 'w_avg_est_woba_wo_risp_pctl',
+       'w_avg_est_woba_w_risp_pctl', 'w_avg_iso_value_wo_risp_pctl',
+       'w_avg_iso_value_w_risp_pctl', 'w_avg_hit_distance_wo_risp_pctl',
+       'w_avg_hit_distance_w_risp_pctl',
+       'ten_days_off_2022_2023', 'games_played_2022_2023',
+       'appearances_2022', 'appearances_2023',
+       'avg_appearances_2022_2023', 'trend_appearances_2022_2023',
+       'height', 'weight', 'age_at_start_of_2024', 'years_in_mlb_by_2024',
+       'obp_2022_p', 'obp_2023_p', 'slg_2022_p', 'slg_2023_p',
+       'ops_2022_p', 'ops_2023_p',
+       'obp_2022_b', 'obp_2023_b', 'slg_2022_b', 'slg_2023_b',
+       'ops_2022_b', 'ops_2023_b',
+       'Avg Pitch Speed', 'Max Pitch Speed', 'Avg Effective Speed',
+       'Max Effective Speed', 'Avg Spin Rate', 'Max Spin Rate',
+       '2022', '2023', 'change_2023', 'pitcher', 'batter'
+       ]])
+
+X_2024 = selector.transform(X_2024)
+
+y_2024 = model.predict(X_2024)
+pred = new_data[['player']].merge(pd.DataFrame(y_2024), left_index=True, right_index=True)
+pred.rename(columns={'player':'PLAYER_ID', 0:'PLAYING_TIME'}, inplace=True)
+submission = pred[pred['PLAYER_ID'].isin(sample_players)]
+
+submission.to_csv('submission.csv', index=False)
