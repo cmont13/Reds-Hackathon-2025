@@ -1,0 +1,320 @@
+### PCA
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.decomposition import PCA
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
+# Load processed dataset
+file_path = "C:/Users/Nicol/OneDrive/Desktop/Reds Hackathon/processed_baseball_data.csv"
+df = pd.read_csv(file_path)
+
+# Define features (batters + pitchers)
+batterX_list = [
+    'w_avg_lnch_spd_wo_risp_bat', 'w_avg_lnch_spd_w_risp_bat',
+    'w_avg_lnch_ang_wo_risp_bat', 'w_avg_lnch_ang_w_risp_bat',
+    'w_avg_est_ba_wo_risp_bat', 'w_avg_est_ba_w_risp_bat',
+    'w_avg_est_woba_wo_risp_bat', 'w_avg_est_woba_w_risp_bat',
+    'w_avg_iso_value_wo_risp_bat', 'w_avg_iso_value_w_risp_bat',
+    'w_avg_hit_distance_wo_risp_bat', 'w_avg_hit_distance_w_risp_bat',
+    'ten_days_off_2021_2022_bat', 'ten_days_off_2022_2023_bat',
+    'games_played_2021_2022_bat', 'games_played_2022_2023_bat',
+    'appearances_2021_bat', 'appearances_2022_bat', 'appearances_2023_bat',
+    'avg_appearances_2021_2022_bat', 'trend_appearances_2021_2022_bat',
+    'height_bat', 'weight_bat',
+    'age_at_start_of_2023_bat', 'years_in_mlb_by_2023_bat',
+    'obp_2021_bat', 'obp_2022_bat', 'slg_2021_bat', 'slg_2022_bat',
+    'ops_2021_bat', 'ops_2022_bat'
+]
+
+pitcherX_list = [
+    'appearances_2021_pit', 'appearances_2022_pit', 'appearances_2023_pit',
+    'avg_appearances_2021_2022_pit', 'trend_appearances_2021_2022_pit',
+    'age_at_start_of_2023_pit', 'years_in_mlb_by_2023_pit'
+]
+
+# Combine batter & pitcher features
+feature_columns = batterX_list + pitcherX_list
+
+# Target variable (total playing time)
+target_variable = "total_playing_time"
+
+# Drop rows with missing values
+df = df[['player'] + feature_columns + [target_variable]].dropna()
+
+# Split into train/test sets (keep player IDs)
+X_train, X_test, y_train, y_test, player_train, player_test = train_test_split(
+    df[feature_columns], df[target_variable], df['player'], test_size=0.2, random_state=42
+)
+
+# Standardize features (PCA requires scaling)
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# Apply PCA
+pca = PCA(n_components=10)  # Choose # of components based on variance explained
+X_train_pca = pca.fit_transform(X_train_scaled)
+X_test_pca = pca.transform(X_test_scaled)
+
+# Train regression model on PCA-transformed data
+model_pca = LinearRegression()
+model_pca.fit(X_train_pca, y_train)
+
+# Predict playing time
+y_pred_pca = model_pca.predict(X_test_pca)
+
+# Save predictions with player IDs
+output_predictions_pca = pd.DataFrame({"player": player_test, "Actual_Playing_Time": y_test, "Predicted_Playing_Time": y_pred_pca})
+output_file_path_pca = "C:/Users/Nicol/OneDrive/Desktop/Reds Hackathon/predicted_playing_time_pca.csv"
+output_predictions_pca.to_csv(output_file_path_pca, index=False)
+
+print(f"PCA-based Predictions saved to: {output_file_path_pca}")
+
+# Evaluate model performance
+print("PCA Model Performance:")
+print("MAE:", mean_absolute_error(y_test, y_pred_pca))
+print("RMSE:", np.sqrt(mean_squared_error(y_test, y_pred_pca)))
+print("R^2 Score:", r2_score(y_test, y_pred_pca))
+
+# Show explained variance by each PCA component
+explained_variance = pd.DataFrame({
+    "Component": range(1, len(pca.explained_variance_ratio_) + 1),
+    "Explained Variance": np.cumsum(pca.explained_variance_ratio_)
+})
+print("\nExplained Variance by PCA Components:")
+print(explained_variance)
+
+
+
+### Stepwise
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
+# Load processed dataset
+file_path = "C:/Users/Nicol/OneDrive/Desktop/Reds Hackathon/processed_baseball_data.csv"
+df = pd.read_csv(file_path)
+
+# Define features for batters and pitchers
+batterX_list = [
+    'w_avg_lnch_spd_wo_risp_bat', 'w_avg_lnch_spd_w_risp_bat',
+    'w_avg_lnch_ang_wo_risp_bat', 'w_avg_lnch_ang_w_risp_bat',
+    'w_avg_est_ba_wo_risp_bat', 'w_avg_est_ba_w_risp_bat',
+    'w_avg_est_woba_wo_risp_bat', 'w_avg_est_woba_w_risp_bat',
+    'w_avg_iso_value_wo_risp_bat', 'w_avg_iso_value_w_risp_bat',
+    'w_avg_hit_distance_wo_risp_bat', 'w_avg_hit_distance_w_risp_bat',
+    'ten_days_off_2021_2022_bat', 'ten_days_off_2022_2023_bat',
+    'games_played_2021_2022_bat', 'games_played_2022_2023_bat',
+    'avg_appearances_2021_2022_bat', 'trend_appearances_2021_2022_bat',
+    'height_bat', 'weight_bat',
+    'age_at_start_of_2023_bat', 'years_in_mlb_by_2023_bat',
+    'obp_2021_bat', 'obp_2022_bat', 'slg_2021_bat', 'slg_2022_bat',
+    'ops_2021_bat', 'ops_2022_bat'
+]
+
+pitcherX_list = [
+    'avg_appearances_2021_2022_pit', 'trend_appearances_2021_2022_pit',
+    'age_at_start_of_2023_pit', 'years_in_mlb_by_2023_pit'
+]
+
+# Combine batter & pitcher features
+feature_columns = batterX_list + pitcherX_list
+
+# Target variable (total playing time)
+target_variable = "total_playing_time"
+
+# Drop rows with missing values
+df = df[['player'] + feature_columns + [target_variable]].dropna()
+
+# **Remove Features That Directly Sum to Total Playing Time (Data Leakage)**
+if "appearances_2021_bat" in df.columns:
+    df = df.drop(columns=["appearances_2021_bat", "appearances_2022_bat", "appearances_2023_bat"], errors="ignore")
+
+if "appearances_2021_pit" in df.columns:
+    df = df.drop(columns=["appearances_2021_pit", "appearances_2022_pit", "appearances_2023_pit"], errors="ignore")
+
+# Split into train/test sets (keep player IDs)
+X_train, X_test, y_train, y_test, player_train, player_test = train_test_split(
+    df[feature_columns], df[target_variable], df['player'], test_size=0.2, random_state=42
+)
+
+# **Reset indices to align endog (y_train) and exog (X_train)**
+X_train = X_train.reset_index(drop=True)
+y_train = y_train.reset_index(drop=True)
+
+# **Remove Highly Correlated Features (to Stabilize Stepwise Selection)**
+corr_matrix = X_train.corr().abs()
+upper_tri = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+high_corr_features = [column for column in upper_tri.columns if any(upper_tri[column] > 0.99)]
+
+print(f"Removing {len(high_corr_features)} highly correlated features: {high_corr_features}")
+X_train = X_train.drop(columns=high_corr_features)
+X_test = X_test.drop(columns=high_corr_features)
+
+# **Standardize Features** (Important for Regression)
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# Convert back to DataFrame for Stepwise Regression
+X_train_scaled_df = pd.DataFrame(X_train_scaled, columns=X_train.columns)
+X_test_scaled_df = pd.DataFrame(X_test_scaled, columns=X_test.columns)
+
+# **Stepwise Regression Function**
+def stepwise_selection(X, y, initial_features=[], threshold_in=0.01, threshold_out=0.05, verbose=True, max_iterations=50):
+    """
+    Perform a forward-backward stepwise regression algorithm.
+    Adds features with p < threshold_in and removes with p > threshold_out.
+    Stops if no more improvement or if max_iterations is reached.
+    """
+    included = list(initial_features)
+    iteration = 0  # Track iterations
+    
+    while iteration < max_iterations:
+        changed = False
+
+        # **Forward Step: Try adding each feature not yet included**
+        excluded = list(set(X.columns) - set(included))
+        new_pval = pd.Series(dtype=float, index=excluded)
+        for new_column in excluded:
+            model = sm.OLS(y, sm.add_constant(pd.DataFrame(X[included + [new_column]]))).fit()
+            new_pval[new_column] = model.pvalues[new_column]
+        best_pval = new_pval.min() if not new_pval.empty else None
+        if best_pval is not None and best_pval < threshold_in:
+            best_feature = new_pval.idxmin()
+            included.append(best_feature)
+            changed = True
+            if verbose:
+                print(f'Adding feature: {best_feature} (p={best_pval:.4f})')
+
+        # **Backward Step: Remove features with p > threshold_out**
+        model = sm.OLS(y, sm.add_constant(pd.DataFrame(X[included]))).fit()
+        pvalues = model.pvalues.iloc[1:]  # Ignore intercept p-value
+        worst_pval = pvalues.max()
+        if worst_pval > threshold_out:
+            worst_feature = pvalues.idxmax()
+            included.remove(worst_feature)
+            changed = True
+            if verbose:
+                print(f'Removing feature: {worst_feature} (p={worst_pval:.4f})')
+
+        iteration += 1  # Increment iteration count
+        if not changed:
+            break  # Stop if no more changes
+
+    print(f"Stepwise Selection Completed in {iteration} iterations.")
+    return included
+
+# **Apply Stepwise Selection**
+selected_features = stepwise_selection(X_train_scaled_df, y_train)
+
+# **Train Final Model Using Selected Features**
+X_train_selected = X_train_scaled_df[selected_features]
+X_test_selected = X_test_scaled_df[selected_features]
+
+final_model = sm.OLS(y_train, sm.add_constant(X_train_selected)).fit()
+y_pred_stepwise = final_model.predict(sm.add_constant(X_test_selected))
+
+# **Save Predictions with Player IDs**
+output_predictions_stepwise = pd.DataFrame({
+    "player": player_test,
+    "Actual_Playing_Time": y_test,
+    "Predicted_Playing_Time": y_pred_stepwise
+})
+output_file_path_stepwise = "C:/Users/Nicol/OneDrive/Desktop/Reds Hackathon/predicted_playing_time_stepwise.csv"
+output_predictions_stepwise.to_csv(output_file_path_stepwise, index=False)
+
+print(f"\nStepwise Regression Predictions saved to: {output_file_path_stepwise}")
+print("\nFinal Selected Features:")
+print(selected_features)
+
+# **Evaluate Model Performance**
+print("\nStepwise Regression Model Performance:")
+print("MAE:", mean_absolute_error(y_test, y_pred_stepwise))
+print("RMSE:", np.sqrt(mean_squared_error(y_test, y_pred_stepwise)))
+print("R^2 Score:", r2_score(y_test, y_pred_stepwise))
+
+
+
+### Lasso
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LassoCV
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
+# Load processed dataset
+file_path = "C:/Users/Nicol/OneDrive/Desktop/Reds Hackathon/processed_baseball_data.csv"
+df = pd.read_csv(file_path)
+
+# Define **ONLY independent features** (No appearances, games played, or direct time indicators)
+feature_columns = [
+    'w_avg_lnch_spd_wo_risp_bat', 'w_avg_lnch_spd_w_risp_bat',
+    'w_avg_lnch_ang_wo_risp_bat', 'w_avg_lnch_ang_w_risp_bat',
+    'w_avg_est_ba_wo_risp_bat', 'w_avg_est_ba_w_risp_bat',
+    'w_avg_est_woba_wo_risp_bat', 'w_avg_est_woba_w_risp_bat',
+    'w_avg_iso_value_wo_risp_bat', 'w_avg_iso_value_w_risp_bat',
+    'w_avg_hit_distance_wo_risp_bat', 'w_avg_hit_distance_w_risp_bat',
+    'ten_days_off_2021_2022_bat', 'ten_days_off_2022_2023_bat',
+    'height_bat', 'weight_bat',
+    'age_at_start_of_2023_bat', 'years_in_mlb_by_2023_bat',
+    'obp_2021_bat', 'obp_2022_bat', 'slg_2021_bat', 'slg_2022_bat',
+    'ops_2021_bat', 'ops_2022_bat',
+    'age_at_start_of_2023_pit', 'years_in_mlb_by_2023_pit'
+]
+
+# Target variable
+target_variable = "total_playing_time"
+
+# Drop rows with missing values in key columns
+df = df[['player'] + feature_columns + [target_variable]].dropna()
+
+# Split into training and test sets (80% training, 20% test)
+X_train, X_test, y_train, y_test, player_train, player_test = train_test_split(
+    df[feature_columns], df[target_variable], df['player'], test_size=0.2, random_state=42
+)
+
+# Scale features
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# Train Lasso Regression model with cross-validation
+lasso = LassoCV(cv=5, alphas=np.logspace(-4, 4, 100))
+lasso.fit(X_train_scaled, y_train)
+
+# Predict playing time
+y_pred = lasso.predict(X_test_scaled)
+
+# Save predictions with player IDs
+output_predictions = pd.DataFrame({"player": player_test, "Actual_Playing_Time": y_test, "Predicted_Playing_Time": y_pred})
+output_file_path = "C:/Users/Nicol/OneDrive/Desktop/Reds Hackathon/predicted_playing_time_no_leakage.csv"
+output_predictions.to_csv(output_file_path, index=False)
+
+print(f"Predictions saved to: {output_file_path}")
+
+# Compute and print model evaluation metrics
+mae = mean_absolute_error(y_test, y_pred)
+rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+r2 = r2_score(y_test, y_pred)
+
+print("\nModel Performance Metrics (No Data Leakage):")
+print(f"Mean Absolute Error (MAE): {mae:.4f}")
+print(f"Root Mean Squared Error (RMSE): {rmse:.4f}")
+print(f"R² Score: {r2:.4f}")
+
+# Display selected features and coefficients
+selected_features = np.array(feature_columns)[np.abs(lasso.coef_) > 1e-4]
+feature_importance = pd.DataFrame({"Feature": selected_features, "Coefficient": lasso.coef_[np.abs(lasso.coef_) > 1e-4]})
+feature_importance = feature_importance.sort_values(by="Coefficient", ascending=False)
+
+# Show feature importance
+print("\nSelected Features and Coefficients:")
+print(feature_importance)
